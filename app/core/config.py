@@ -1,0 +1,17 @@
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
+    app_name: str = "AVA SmartFuel"
+    official_fuel_api_url: str = (
+        "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/"
+        "prix-des-carburants-en-france-flux-instantane-v2/records"
+    )
+    default_radius_km: float = 50
+    default_limit: int = 50
+
+
+settings = Settings()
+

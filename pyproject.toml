@@ -1,0 +1,19 @@
+[project]
+name = "ava-smartfuel-backend"
+version = "0.1.0"
+description = "FastAPI backend for AVA SmartFuel."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.111.0",
+    "httpx>=0.27.0",
+    "pydantic-settings>=2.3.0",
+    "uvicorn[standard]>=0.30.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.2.0", "ruff>=0.5.0"]
+ml = ["numpy>=2.0.0", "pandas>=2.2.0", "tensorflow>=2.16.0"]
+
+[tool.ruff]
+line-length = 100
+
