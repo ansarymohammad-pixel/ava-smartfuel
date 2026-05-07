@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from app.core.config import settings
 from app.schemas.prediction import PricePredictionResponse
@@ -34,16 +34,19 @@ async def nearby_stations(
 ) -> NearbyStationsResponse:
     async with OfficialFuelClient() as client:
         service = StationRecommendationService(client)
-        return await service.nearby(
-            lat=lat,
-            lon=lon,
-            fuel_type=fuel_type,
-            liters=liters,
-            consumption_l_100km=consumption_l_100km,
-            radius_km=radius_km,
-            limit=limit,
-            country=normalize_country(country, lat, lon),
-        )
+        try:
+            return await service.nearby(
+                lat=lat,
+                lon=lon,
+                fuel_type=fuel_type,
+                liters=liters,
+                consumption_l_100km=consumption_l_100km,
+                radius_km=radius_km,
+                limit=limit,
+                country=normalize_country(country, lat, lon),
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/predictions/price", response_model=PricePredictionResponse)
