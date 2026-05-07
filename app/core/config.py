@@ -9,9 +9,12 @@ class Settings(BaseSettings):
         "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/"
         "prix-des-carburants-en-france-flux-instantane-v2/records"
     )
+    spanish_fuel_api_url: str = (
+        "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/"
+        "PreciosCarburantes/EstacionesTerrestres/"
+    )
     default_radius_km: float = 50
     default_limit: int = 50
 
 
 settings = Settings()
-
