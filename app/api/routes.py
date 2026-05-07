@@ -3,6 +3,7 @@ from fastapi import APIRouter, Query
 from app.core.config import settings
 from app.schemas.prediction import PricePredictionResponse
 from app.schemas.station import FuelType, NearbyStationsResponse
+from app.services.country import normalize_country
 from app.services.lstm_predictor import LstmPricePredictor
 from app.services.official_fuel_client import OfficialFuelClient
 from app.services.station_recommendation import StationRecommendationService
@@ -29,6 +30,7 @@ async def nearby_stations(
     consumption_l_100km: float = Query(6.5, gt=1, le=30),
     radius_km: float = Query(settings.default_radius_km, gt=0.5, le=50),
     limit: int = Query(settings.default_limit, gt=1, le=100),
+    country: str | None = Query(None, description="FR or ES. Auto-detected when omitted."),
 ) -> NearbyStationsResponse:
     async with OfficialFuelClient() as client:
         service = StationRecommendationService(client)
@@ -40,6 +42,7 @@ async def nearby_stations(
             consumption_l_100km=consumption_l_100km,
             radius_km=radius_km,
             limit=limit,
+            country=normalize_country(country, lat, lon),
         )
 
 
@@ -54,4 +57,3 @@ async def price_prediction(
         station_id=station_id,
         horizon_hours=horizon_hours,
     )
-
