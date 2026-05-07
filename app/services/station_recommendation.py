@@ -1,5 +1,6 @@
 from app.schemas.station import FuelType, NearbyStationsResponse, StationChoice
 from app.services.ava_score import compute_ava_score
+from app.services.country import CountryCode
 from app.services.geo import google_maps_navigation_url, haversine_km
 from app.services.official_fuel_client import OfficialFuelClient
 
@@ -18,6 +19,7 @@ class StationRecommendationService:
         consumption_l_100km: float,
         radius_km: float,
         limit: int,
+        country: CountryCode = CountryCode.france,
     ) -> NearbyStationsResponse:
         stations = await self.official_client.fetch_nearby(
             lat=lat,
@@ -25,6 +27,7 @@ class StationRecommendationService:
             fuel_type=fuel_type,
             radius_km=radius_km,
             limit=limit,
+            country=country,
         )
         if not stations:
             return NearbyStationsResponse(
@@ -71,4 +74,3 @@ class StationRecommendationService:
             average_price_eur_l=round(average_price, 3),
             choices=choices,
         )
-
