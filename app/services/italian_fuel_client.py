@@ -43,10 +43,13 @@ class ItalianFuelClient:
         limit: int,
     ) -> list[StationPrice]:
         all_prices = await self._fetch_italian_prices()
+        accepted_fuels = {fuel_type}
+        if fuel_type == FuelType.e10:
+            accepted_fuels.add(FuelType.sp95)
         stations = [
             station
             for station in all_prices
-            if station.fuel_type == fuel_type
+            if station.fuel_type in accepted_fuels
             and haversine_km(lat, lon, station.lat, station.lon) <= radius_km
         ]
         stations.sort(key=lambda station: (station.price_eur_l, haversine_km(lat, lon, station.lat, station.lon)))
