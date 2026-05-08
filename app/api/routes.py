@@ -1,3 +1,5 @@
+import time
+
 from fastapi import APIRouter, HTTPException, Query
 
 from app.core.config import settings
@@ -9,6 +11,8 @@ from app.services.official_fuel_client import OfficialFuelClient
 from app.services.station_recommendation import StationRecommendationService
 
 router = APIRouter()
+
+_NEARBY_CACHE: dict[tuple[object, ...], tuple[float, NearbyStationsResponse]] = {}
 
 
 @router.get("/health")
@@ -32,10 +36,25 @@ async def nearby_stations(
     limit: int = Query(settings.default_limit, gt=1, le=100),
     country: str | None = Query(None, description="FR or ES. Auto-detected when omitted."),
 ) -> NearbyStationsResponse:
+    normalized_country = normalize_country(country, lat, lon)
+    cache_key = (
+        round(lat, 4),
+        round(lon, 4),
+        fuel_type.value,
+        round(liters, 1),
+        round(consumption_l_100km, 1),
+        round(radius_km, 1),
+        limit,
+        normalized_country.value,
+    )
+    cached = _NEARBY_CACHE.get(cache_key)
+    if cached and time.monotonic() - cached[0] < settings.nearby_cache_ttl_seconds:
+        return cached[1].model_copy(deep=True)
+
     async with OfficialFuelClient() as client:
         service = StationRecommendationService(client)
         try:
-            return await service.nearby(
+            response = await service.nearby(
                 lat=lat,
                 lon=lon,
                 fuel_type=fuel_type,
@@ -43,8 +62,10 @@ async def nearby_stations(
                 consumption_l_100km=consumption_l_100km,
                 radius_km=radius_km,
                 limit=limit,
-                country=normalize_country(country, lat, lon),
+                country=normalized_country,
             )
+            _NEARBY_CACHE[cache_key] = (time.monotonic(), response.model_copy(deep=True))
+            return response
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
