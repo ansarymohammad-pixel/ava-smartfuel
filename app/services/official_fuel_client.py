@@ -6,6 +6,7 @@ import httpx
 from app.core.config import settings
 from app.schemas.station import FuelType, StationPrice
 from app.services.country import CountryCode
+from app.services.italian_fuel_client import ItalianFuelClient
 from app.services.spanish_fuel_client import SpanishFuelClient
 
 PRICE_FIELDS = {
@@ -40,6 +41,14 @@ class OfficialFuelClient:
     ) -> list[StationPrice]:
         if country == CountryCode.spain:
             return await SpanishFuelClient(self._client).fetch_nearby(
+                lat=lat,
+                lon=lon,
+                fuel_type=fuel_type,
+                radius_km=radius_km,
+                limit=limit,
+            )
+        if country == CountryCode.italy:
+            return await ItalianFuelClient(self._client).fetch_nearby(
                 lat=lat,
                 lon=lon,
                 fuel_type=fuel_type,
