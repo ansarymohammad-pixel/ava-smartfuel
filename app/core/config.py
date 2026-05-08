@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     )
     default_radius_km: float = 50
     default_limit: int = 50
+    official_cache_ttl_seconds: int = 21600
+    nearby_cache_ttl_seconds: int = 300
 
 
 settings = Settings()
