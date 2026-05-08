@@ -34,7 +34,7 @@ async def nearby_stations(
     consumption_l_100km: float = Query(6.5, gt=1, le=30),
     radius_km: float = Query(settings.default_radius_km, gt=0.5, le=50),
     limit: int = Query(settings.default_limit, gt=1, le=100),
-    country: str | None = Query(None, description="FR or ES. Auto-detected when omitted."),
+    country: str | None = Query(None, description="FR, ES or IT. Auto-detected when omitted."),
 ) -> NearbyStationsResponse:
     normalized_country = normalize_country(country, lat, lon)
     cache_key = (
