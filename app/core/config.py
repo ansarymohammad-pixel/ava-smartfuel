@@ -13,6 +13,10 @@ class Settings(BaseSettings):
         "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/"
         "PreciosCarburantes/EstacionesTerrestres/"
     )
+    italian_prices_csv_url: str = "https://www.mimit.gov.it/images/exportCSV/prezzo_alle_8.csv"
+    italian_stations_csv_url: str = (
+        "https://www.mimit.gov.it/images/exportCSV/anagrafica_impianti_attivi.csv"
+    )
     default_radius_km: float = 50
     default_limit: int = 50
     official_cache_ttl_seconds: int = 21600
