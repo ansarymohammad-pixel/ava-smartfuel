@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     nearby_cache_ttl_seconds: int = 300
     database_url: str = "postgresql://ava_user:change-me@127.0.0.1:5432/ava_smartfuel"
     jwt_secret: str = "change-this-secret-before-production"
+    public_api_url: str = "https://api.avaintelligent.info"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = "support@avaintelligent.info"
+    smtp_password: str = ""
+    smtp_from: str = "support@avaintelligent.info"
 
 
 settings = Settings()

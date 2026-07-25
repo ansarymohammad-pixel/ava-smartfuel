@@ -1,5 +1,6 @@
 import time
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
@@ -11,10 +12,13 @@ from app.services.official_fuel_client import OfficialFuelClient
 from app.services.station_recommendation import StationRecommendationService
 from app.services.user_store import (
     CurrentUser,
+    confirm_email_token,
     connection,
     hash_password,
     init_db,
     read_token,
+    send_confirmation_email,
+    set_verification_token,
     user_response,
     verify_password,
 )
@@ -28,6 +32,10 @@ class AuthRequest(BaseModel):
     email: str = Field(min_length=5, max_length=254)
     password: str = Field(min_length=6, max_length=128)
     language: str = "fr"
+
+
+class EmailRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=254)
 
 
 class ProfileUpdate(BaseModel):
@@ -87,7 +95,11 @@ async def register(payload: AuthRequest) -> dict[str, object]:
             if existing:
                 raise HTTPException(status_code=409, detail="Email already exists")
             row = cur.execute(
-                "INSERT INTO users (email, password_hash) VALUES (%s, %s) RETURNING id",
+                """
+                INSERT INTO users (email, password_hash)
+                VALUES (%s, %s)
+                RETURNING id
+                """,
                 (email, hash_password(payload.password)),
             ).fetchone()
             user_id = str(row["id"])
@@ -100,7 +112,44 @@ async def register(payload: AuthRequest) -> dict[str, object]:
                 (user_id, payload.language),
             )
         conn.commit()
-    return user_response(user_id=user_id, email=email)
+    verification_token = set_verification_token(email)
+    email_sent = send_confirmation_email(email, verification_token) if verification_token else False
+    response = user_response(user_id=user_id, email=email)
+    response["email_sent"] = email_sent
+    response["email_verified"] = False
+    return response
+
+
+@router.post("/auth/resend-confirmation")
+async def resend_confirmation(payload: EmailRequest) -> dict[str, object]:
+    init_db()
+    email = payload.email.lower().strip()
+    if "@" not in email:
+        raise HTTPException(status_code=422, detail="Invalid email")
+    verification_token = set_verification_token(email)
+    if not verification_token:
+        raise HTTPException(status_code=404, detail="Email not found")
+    email_sent = send_confirmation_email(email, verification_token)
+    return {"status": "ok", "email_sent": email_sent}
+
+
+@router.get("/auth/confirm", response_class=HTMLResponse)
+async def confirm_email(token: str = Query(..., min_length=16)) -> str:
+    init_db()
+    email = confirm_email_token(token)
+    if not email:
+        return """
+        <html><body style="font-family:Arial;background:#06111d;color:white;text-align:center;padding:40px">
+        <h1>AVA SmartFuel</h1>
+        <p>Ce lien est invalide ou expire.</p>
+        </body></html>
+        """
+    return """
+    <html><body style="font-family:Arial;background:#06111d;color:white;text-align:center;padding:40px">
+    <h1>AVA SmartFuel</h1>
+    <p>Email confirme avec succes. Vous pouvez retourner dans l'application.</p>
+    </body></html>
+    """
 
 
 @router.post("/auth/login")
@@ -111,10 +160,15 @@ async def login(payload: AuthRequest) -> dict[str, object]:
         raise HTTPException(status_code=422, detail="Invalid email")
     with connection() as conn:
         with conn.cursor() as cur:
-            row = cur.execute("SELECT id, password_hash FROM users WHERE email = %s", (email,)).fetchone()
+            row = cur.execute(
+                "SELECT id, password_hash, email_verified FROM users WHERE email = %s",
+                (email,),
+            ).fetchone()
     if not row or not verify_password(payload.password, row["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    return user_response(user_id=str(row["id"]), email=email)
+    response = user_response(user_id=str(row["id"]), email=email)
+    response["email_verified"] = bool(row["email_verified"])
+    return response
 
 
 @router.post("/auth/refresh")

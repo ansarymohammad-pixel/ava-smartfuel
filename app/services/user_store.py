@@ -3,9 +3,13 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
+import smtplib
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
 from typing import Any
 
 import psycopg
@@ -34,10 +38,16 @@ def init_db() -> None:
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     email TEXT UNIQUE NOT NULL,
                     password_hash TEXT NOT NULL,
+                    email_verified BOOLEAN NOT NULL DEFAULT false,
+                    verification_token TEXT,
+                    verification_expires_at TIMESTAMPTZ,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
                 )
                 """
             )
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT false")
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token TEXT")
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_expires_at TIMESTAMPTZ")
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS user_profiles (
@@ -142,3 +152,80 @@ def user_response(user_id: str, email: str) -> dict[str, Any]:
         "token_type": "bearer",
         "user": {"id": user_id, "email": email},
     }
+
+
+def create_verification_token() -> tuple[str, datetime]:
+    return secrets.token_urlsafe(32), datetime.now(timezone.utc) + timedelta(hours=24)
+
+
+def set_verification_token(email: str) -> str | None:
+    token, expires_at = create_verification_token()
+    with connection() as conn:
+        with conn.cursor() as cur:
+            row = cur.execute(
+                """
+                UPDATE users
+                SET verification_token = %s,
+                    verification_expires_at = %s
+                WHERE email = %s
+                RETURNING id
+                """,
+                (token, expires_at, email),
+            ).fetchone()
+        conn.commit()
+    return token if row else None
+
+
+def confirm_email_token(token: str) -> str | None:
+    with connection() as conn:
+        with conn.cursor() as cur:
+            row = cur.execute(
+                """
+                UPDATE users
+                SET email_verified = true,
+                    verification_token = NULL,
+                    verification_expires_at = NULL
+                WHERE verification_token = %s
+                  AND verification_expires_at > now()
+                RETURNING email
+                """,
+                (token,),
+            ).fetchone()
+        conn.commit()
+    return str(row["email"]) if row else None
+
+
+def send_confirmation_email(email: str, token: str) -> bool:
+    if not settings.smtp_host or not settings.smtp_password:
+        return False
+
+    confirm_url = f"{settings.public_api_url.rstrip('/')}/auth/confirm?token={token}"
+    message = EmailMessage()
+    message["Subject"] = "Confirm your AVA SmartFuel account"
+    message["From"] = settings.smtp_from
+    message["To"] = email
+    message.set_content(
+        "\n".join(
+            [
+                "Bonjour,",
+                "",
+                "Merci de creer votre compte AVA SmartFuel.",
+                "Confirmez votre email avec ce lien :",
+                confirm_url,
+                "",
+                "Ce lien expire dans 24 heures.",
+                "",
+                "AVA SmartFuel",
+                "support@avaintelligent.info",
+            ]
+        )
+    )
+
+    try:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20) as smtp:
+            smtp.starttls()
+            smtp.login(settings.smtp_user, settings.smtp_password)
+            smtp.send_message(message)
+        return True
+    except Exception:
+        return False
