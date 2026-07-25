@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import secrets
 import smtplib
@@ -16,6 +17,8 @@ import psycopg
 from psycopg.rows import dict_row
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -112,7 +115,8 @@ def verify_password(password: str, password_hash: str) -> bool:
         expected = base64.urlsafe_b64decode(digest_b64.encode())
         actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, int(iterations))
         return hmac.compare_digest(actual, expected)
-    except Exception:
+    except Exception as exc:
+        logger.warning("Confirmation email failed for %s: %s", email, exc)
         return False
 
 
