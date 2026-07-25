@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     default_limit: int = 50
     official_cache_ttl_seconds: int = 21600
     nearby_cache_ttl_seconds: int = 300
+    database_url: str = "postgresql://ava_user:change-me@127.0.0.1:5432/ava_smartfuel"
+    jwt_secret: str = "change-this-secret-before-production"
 
 
 settings = Settings()

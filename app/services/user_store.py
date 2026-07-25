@@ -1,0 +1,144 @@
+import base64
+import hashlib
+import hmac
+import json
+import os
+import time
+import uuid
+from dataclasses import dataclass
+from typing import Any
+
+import psycopg
+from psycopg.rows import dict_row
+
+from app.core.config import settings
+
+
+@dataclass(frozen=True)
+class CurrentUser:
+    id: str
+    email: str
+
+
+def connection() -> psycopg.Connection:
+    return psycopg.connect(settings.database_url, row_factory=dict_row)
+
+
+def init_db() -> None:
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    email TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_profiles (
+                    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                    preferred_fuel TEXT DEFAULT 'SP95-E10',
+                    consumption_l_100km NUMERIC(5,2) DEFAULT 6.50,
+                    tank_liters NUMERIC(5,2) DEFAULT 50.00,
+                    language TEXT DEFAULT 'fr',
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS favorite_stations (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    station_id TEXT NOT NULL,
+                    station_name TEXT NOT NULL,
+                    brand TEXT,
+                    address TEXT,
+                    city TEXT,
+                    country TEXT,
+                    fuel_type TEXT NOT NULL,
+                    price_eur_l NUMERIC(6,3),
+                    lat DOUBLE PRECISION,
+                    lon DOUBLE PRECISION,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    UNIQUE(user_id, station_id, fuel_type)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS price_alerts (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    station_id TEXT,
+                    fuel_type TEXT NOT NULL,
+                    target_price NUMERIC(6,3) NOT NULL,
+                    active BOOLEAN NOT NULL DEFAULT true,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+        conn.commit()
+
+
+def hash_password(password: str) -> str:
+    salt = os.urandom(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 200_000)
+    return "pbkdf2_sha256$200000$" + base64.urlsafe_b64encode(salt).decode() + "$" + base64.urlsafe_b64encode(digest).decode()
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    try:
+        algorithm, iterations, salt_b64, digest_b64 = password_hash.split("$", 3)
+        if algorithm != "pbkdf2_sha256":
+            return False
+        salt = base64.urlsafe_b64decode(salt_b64.encode())
+        expected = base64.urlsafe_b64decode(digest_b64.encode())
+        actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, int(iterations))
+        return hmac.compare_digest(actual, expected)
+    except Exception:
+        return False
+
+
+def create_token(user_id: str, email: str, expires_in: int = 60 * 60 * 24 * 30) -> str:
+    payload = {
+        "sub": user_id,
+        "email": email,
+        "exp": int(time.time()) + expires_in,
+        "jti": str(uuid.uuid4()),
+    }
+    body = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode().rstrip("=")
+    signature = hmac.new(settings.jwt_secret.encode(), body.encode(), hashlib.sha256).digest()
+    sig = base64.urlsafe_b64encode(signature).decode().rstrip("=")
+    return f"{body}.{sig}"
+
+
+def read_token(token: str) -> CurrentUser | None:
+    try:
+        body, sig = token.split(".", 1)
+        expected = hmac.new(settings.jwt_secret.encode(), body.encode(), hashlib.sha256).digest()
+        actual = base64.urlsafe_b64decode(sig + "=" * (-len(sig) % 4))
+        if not hmac.compare_digest(actual, expected):
+            return None
+        payload = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
+        if int(payload["exp"]) < int(time.time()):
+            return None
+        return CurrentUser(id=str(payload["sub"]), email=str(payload["email"]))
+    except Exception:
+        return None
+
+
+def user_response(user_id: str, email: str) -> dict[str, Any]:
+    token = create_token(user_id=user_id, email=email)
+    return {
+        "access_token": token,
+        "refresh_token": token,
+        "token_type": "bearer",
+        "user": {"id": user_id, "email": email},
+    }
