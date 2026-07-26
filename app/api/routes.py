@@ -347,9 +347,19 @@ async def price_prediction(
     fuel_type: FuelType = Query(...),
     station_id: str | None = Query(None),
     horizon_hours: int = Query(24, ge=1, le=168),
+    current_price: float | None = Query(None, gt=0),
+    average_price: float | None = Query(None, gt=0),
+    min_price: float | None = Query(None, gt=0),
+    max_price: float | None = Query(None, gt=0),
+    sample_count: int = Query(0, ge=0, le=500),
 ) -> PricePredictionResponse:
     return await LstmPricePredictor().predict(
         fuel_type=fuel_type,
         station_id=station_id,
         horizon_hours=horizon_hours,
+        current_price=current_price,
+        average_price=average_price,
+        min_price=min_price,
+        max_price=max_price,
+        sample_count=sample_count,
     )

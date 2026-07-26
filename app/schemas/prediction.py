@@ -13,5 +13,11 @@ class PricePredictionResponse(BaseModel):
     model: str
     status: str
     message: str
+    trend_eur_l: float = 0.0
+    seasonal_eur_l: float = 0.0
+    residual_eur_l: float = 0.0
+    confidence: int = 50
+    history_points: int = 0
+    basis: str = "no_history"
     generated_at: datetime
 
